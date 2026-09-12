@@ -1,0 +1,18 @@
+{
+  "version": 3,
+  "configurePresets": [{
+    "name": "release",
+    "generator": "Ninja",
+    "binaryDir": "${sourceDir}/out/release",
+    "cacheVariables": {
+      "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+      "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "VCPKG_TARGET_TRIPLET": "x64-windows-skse",
+      "VCPKG_HOST_TRIPLET": "x64-windows-skse",
+      "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake",
+      "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+      "AMR_ENABLE_AUTO_DEPLOY": "OFF"
+    }
+  }],
+  "buildPresets": [{"name": "release", "configurePreset": "release", "jobs": 6}]
+}

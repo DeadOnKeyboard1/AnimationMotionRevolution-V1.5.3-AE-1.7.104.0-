@@ -1,0 +1,14 @@
+build/
+.vs/
+x64/
+out/
+dist/
+*.dll
+*.pdb
+*.lib
+*.exp
+*.obj
+*.zip
+*.log
+CMakeUserPresets.json
+__pycache__/
