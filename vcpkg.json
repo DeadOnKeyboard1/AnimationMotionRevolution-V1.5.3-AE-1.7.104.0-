@@ -3,7 +3,7 @@
     "version-string": "1.5.4",
     "description": "",
     "homepage": "https://github.com/alexsylex/AnimationMotionRevolution",
-    "license": "MIT",
+    "license": "GPL-3.0-or-later",
     "dependencies": [
         "boost-atomic",
         "boost-stl-interfaces",

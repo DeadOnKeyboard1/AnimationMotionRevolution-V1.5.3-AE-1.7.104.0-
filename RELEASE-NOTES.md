@@ -18,3 +18,10 @@ a stable release; the old pathfix ZIP remains the known baseline.
 
 The checked-in GitHub workflow is a build workflow, not an automatic publisher.
 It has not run on GitHub until you upload the repository and trigger a run.
+
+## Licensing
+
+This downstream compatibility build is distributed under GPL-3.0-or-later due
+to its CommonLibSSE-NG compatibility material. The original AMR MIT license and
+copyright notice remain included and are not replaced by this downstream
+license choice.

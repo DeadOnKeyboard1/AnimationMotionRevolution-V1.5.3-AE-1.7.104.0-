@@ -7,6 +7,10 @@
   Its MIT license is retained. Only build-relevant source/header/CMake files,
   the upstream README and license are included; upstream test assets are omitted.
   CommonLib's upstream tests must remain disabled for this trimmed snapshot.
+- Skyrim 1.7.104 compatibility work was produced against the current
+  CommonLibSSE-NG 8.0.0 reference, which is GPL-3.0-or-later. The downstream
+  combined AMR compatibility source and binaries are therefore distributed
+  under GPL-3.0-or-later while retaining every applicable MIT notice.
 - Local adaptations: `include/REL/Relocation.h` contains AMR's existing
   format-5 header/table decoder and module-relative database filename handling.
   The CMake plugin helper retains the existing post-629 compatibility flag.

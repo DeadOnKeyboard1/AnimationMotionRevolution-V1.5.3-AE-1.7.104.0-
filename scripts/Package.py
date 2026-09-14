@@ -15,7 +15,9 @@ pdb = args.build / 'AnimationMotionRevolution.pdb'
 assert dll_identity(dll) == pdb_identity(pdb), 'DLL/PDB identity mismatch'
 files = {'SKSE/Plugins/' + dll.name: dll.read_bytes(),
          'SKSE/Plugins/' + pdb.name: pdb.read_bytes(),
-         'readmes/AMR-LICENSE.txt': (root / 'LICENSE').read_bytes(),
+         'readmes/GPL-3.0-or-later.txt': (root / 'LICENSE').read_bytes(),
+         'readmes/AMR-MIT-LICENSE.txt': (root / 'LICENSES/MIT-AnimationMotionRevolution.txt').read_bytes(),
+         'readmes/NOTICE.txt': (root / 'NOTICE.md').read_bytes(),
          'readmes/CommonLibSSE-LICENSE.txt': (root / 'external/CommonLibSSE/LICENSE').read_bytes()}
 for copyright in (args.build / 'vcpkg_installed/x64-windows-skse/share').glob('*/copyright'):
     files['readmes/licenses/' + copyright.parent.name + '.txt'] = copyright.read_bytes()
