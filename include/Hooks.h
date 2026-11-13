@@ -1,12 +1,15 @@
 #pragma once
 
 #include "utils/Trampoline.h"
+#include "utils/HookValidation.h"
+#include "utils/Logger.h"
+#include "utils/CallPatchRollback.h"
 
-#include "RE/B/BShkbAnimationGraph.h"
-#include "RE/H/hkbClipGenerator.h"
-#include "RE/H/hkbContext.h"
+#include <RE/B/BShkbAnimationGraph.h>
+#include <RE/H/hkbClipGenerator.h>
+#include <RE/H/hkbContext.h>
 
-#include "RE/M/MotionDataContainer.h"
+#include <RE/M/MotionDataContainer.h>
 
 namespace hooks
 {
@@ -17,19 +20,24 @@ namespace hooks
 
 	public:
 
-		static inline REL::Relocation<std::uintptr_t> Activate{ ActivateId };
+		static inline REL::Relocation<std::uintptr_t> Activate;
 		static inline REL::Relocation<std::uint32_t (*)(const RE::hkbClipGenerator*)> ComputeStartTime;
 		static std::uint32_t ComputeStartTime_Hook(const RE::hkbClipGenerator* a_this, const RE::hkbContext* a_context);
 
-		static inline REL::Relocation<std::uintptr_t> Deactivate{ DeactivateId };
+		static inline REL::Relocation<std::uintptr_t> Deactivate;
 		static inline REL::Relocation<void (*)(const RE::hkbClipGenerator*)> ResetIgnoreStartTime;
 		static void ResetIgnoreStartTime_Hook(const RE::hkbClipGenerator* a_this, const RE::hkbContext* a_hkbContext);
+		static void ResolveTargets()
+		{
+			Activate = ActivateId;
+			Deactivate = DeactivateId;
+		}
 
 	private:
 
 		static const RE::hkaAnimation* GetBoundAnimation(const RE::hkbClipGenerator* a_this) 
 		{ 
-			return a_this->binding? (a_this->binding->animation? a_this->binding->animation.get() : nullptr) : nullptr;
+			return a_this && a_this->binding ? a_this->binding->animation.get() : nullptr;
 		}
 	};
 
@@ -42,13 +50,19 @@ namespace hooks
 	public:
 
 		// Translation
-		static inline REL::Relocation<void (*)(std::uintptr_t*, float, RE::NiPoint3&)> ProcessTranslationData{ ProcessTranslationDataId };
+		static inline REL::Relocation<void (*)(std::uintptr_t*, float, RE::NiPoint3&)> ProcessTranslationData;
 		static void ProcessTranslationData_Hook(RE::MotionDataContainer* a_this, float a_motionTime, RE::NiPoint3& a_translation,
 												const RE::BSFixedString* a_clipName, RE::Character* a_character);
 
 		// Rotation
-		static inline REL::Relocation<void (*)(std::uintptr_t*, float, RE::NiQuaternion&)> ProcessRotationData{ ProcessRotationDataId };
-		static inline REL::Relocation<void (*)(RE::NiQuaternion&, float, const RE::NiQuaternion&, const RE::NiQuaternion&)> InterpolateRotation{ InterpolateRotationId };
+		static inline REL::Relocation<void (*)(std::uintptr_t*, float, RE::NiQuaternion&)> ProcessRotationData;
+		static inline REL::Relocation<void (*)(RE::NiQuaternion&, float, const RE::NiQuaternion&, const RE::NiQuaternion&)> InterpolateRotation;
+		static void ResolveTargets()
+		{
+			ProcessTranslationData = ProcessTranslationDataId;
+			ProcessRotationData = ProcessRotationDataId;
+			InterpolateRotation = InterpolateRotationId;
+		}
 		static void ProcessRotationData_Hook(RE::MotionDataContainer* a_this, float a_motionTime, RE::NiQuaternion& a_rotation, 
 											 const RE::BSFixedString* a_clipName, RE::Character* a_character);
 
@@ -56,13 +70,16 @@ namespace hooks
 
 		static RE::hkbCharacter* GethkbCharacter(RE::Character* a_character)
 		{
+			if (!a_character) return nullptr;
 			RE::BSAnimationGraphManagerPtr animGraph;
 
 			a_character->GetAnimationGraphManager(animGraph);
 
 			if (animGraph)
 			{
-				RE::BShkbAnimationGraphPtr activeGraph = animGraph->graphs[animGraph->GetRuntimeData().activeGraph];
+				const auto index = animGraph->GetRuntimeData().activeGraph;
+				if (index >= animGraph->graphs.size()) return nullptr;
+				RE::BShkbAnimationGraphPtr activeGraph = animGraph->graphs[index];
 
 				if (activeGraph)
 				{
@@ -80,13 +97,62 @@ namespace hooks
 
 	public:
 
-		static inline REL::Relocation<std::uintptr_t> ProcessMotionData{ ProcessMotionDataId };
+		static inline REL::Relocation<std::uintptr_t> ProcessMotionData;
+		static void ResolveTargets() { ProcessMotionData = ProcessMotionDataId; }
 	};
 
-	static inline void Install()
+	static inline std::optional<utils::ContextRegister> ValidateRuntimeLayout()
 	{
-		// Bethesda used compiled Havok libraries, so neither registers 
-		// nor offsets changed between SE-AE for the hkbClipGenerator hooks
+		// Resolve only after the SKSE entry point has checked the selected game image.
+		hkbClipGenerator::ResolveTargets();
+		MotionDataContainer::ResolveTargets();
+		Character::ResolveTargets();
+		const auto text = REL::Module::get().segment(REL::Segment::textx);
+		const auto checkedCode = [&](std::uintptr_t address, std::size_t size) -> std::span<const std::uint8_t> {
+			if (address < text.address()) return {};
+			const auto offset = address - text.address();
+			if (offset > text.size() || size > text.size() - offset) return {};
+			return { reinterpret_cast<const std::uint8_t*>(address), size };
+		};
+		const auto activateAddress = hkbClipGenerator::Activate.address();
+		const auto deactivateAddress = hkbClipGenerator::Deactivate.address();
+		const auto motionAddress = Character::ProcessMotionData.address();
+		const std::array<std::size_t, 4> motionOffsets = !REL::Module::IsAE() ?
+			std::array<std::size_t, 4>{0x28D, 0x2A1, 0x355, 0x368} :
+			std::array<std::size_t, 4>{0x298, 0x2AA, 0x35C, 0x36D};
+		if (!utils::IsCallBoundary(checkedCode(activateAddress, 0x66E + 5), 0x66E)) {
+			logger::error("Unsupported animation activation hook layout; no hooks installed");
+			return std::nullopt;
+		}
+		const auto context = utils::DeactivationContext(checkedCode(deactivateAddress, 0x1A + 5), 0x1A);
+		if (!context) {
+			logger::error("Unsupported animation deactivation context capture; no hooks installed");
+			return std::nullopt;
+		}
+		for (const auto offset : motionOffsets) {
+			if (!utils::IsCallBoundary(checkedCode(motionAddress, offset + 5), offset)) {
+				logger::error("Unsupported character motion hook at offset 0x{:X}; no hooks installed", offset);
+				return std::nullopt;
+			}
+		}
+		logger::info("Validated hook layout for {}; deactivation context uses {}", REL::Module::get().version().string(),
+			*context == utils::ContextRegister::rsi ? "RSI" : "R14");
+		return context;
+	}
+
+	static inline bool Install(utils::ContextRegister context)
+	{
+		const auto activateAddress = hkbClipGenerator::Activate.address();
+		const auto deactivateAddress = hkbClipGenerator::Deactivate.address();
+		const auto motionAddress = Character::ProcessMotionData.address();
+		const std::array<std::size_t, 4> motionOffsets = !REL::Module::IsAE() ?
+			std::array<std::size_t, 4>{0x28D, 0x2A1, 0x355, 0x368} :
+			std::array<std::size_t, 4>{0x298, 0x2AA, 0x35C, 0x36D};
+		SKSE::AllocTrampoline(512);
+		// Keep restoration armed until all potentially throwing load work is complete.
+		utils::CallPatchRollback rollback({activateAddress + 0x66E, deactivateAddress + 0x1A,
+			motionAddress + motionOffsets[0], motionAddress + motionOffsets[1],
+			motionAddress + motionOffsets[2], motionAddress + motionOffsets[3]}, &REL::safe_write);
 
 		// hkbClipGenerator::Activate
 		{
@@ -118,12 +184,12 @@ namespace hooks
 
 			struct Hook : Xbyak::CodeGenerator
 			{
-				Hook()
+				Hook(utils::ContextRegister context)
 				{
 					Xbyak::Label hookLabel;
 					Xbyak::Label retnLabel;
 
-					mov(rdx, r14);	// r14 = hkbContext*
+					mov(rdx, context == utils::ContextRegister::rsi ? rsi : r14);
 					call(ptr[rip + hookLabel]);
 
 					jmp(ptr[rip + retnLabel]);
@@ -133,15 +199,15 @@ namespace hooks
 				}
 			};
 
-			hkbClipGenerator::ResetIgnoreStartTime = utils::WriteBranchTrampoline<5>(hookedAddress, Hook());
+			hkbClipGenerator::ResetIgnoreStartTime = utils::WriteBranchTrampoline<5>(hookedAddress, Hook(context));
 		}
 
 		// Character::ProcessMotionData
 		{
-			static std::uintptr_t translation1HookedAddress = Character::ProcessMotionData.address() + (!REL::Module::IsAE() ? 0x28D : 0x298);
-			static std::uintptr_t translation2HookedAddress = Character::ProcessMotionData.address() + (!REL::Module::IsAE() ? 0x2A1 : 0x2AA);
-			static std::uintptr_t rotation1HookedAddress = Character::ProcessMotionData.address() + (!REL::Module::IsAE() ? 0x355 : 0x35C);
-			static std::uintptr_t rotation2HookedAddress = Character::ProcessMotionData.address() + (!REL::Module::IsAE() ? 0x368 : 0x36D);
+			const auto translation1HookedAddress = motionAddress + motionOffsets[0];
+			const auto translation2HookedAddress = motionAddress + motionOffsets[1];
+			const auto rotation1HookedAddress = motionAddress + motionOffsets[2];
+			const auto rotation2HookedAddress = motionAddress + motionOffsets[3];
 
 			struct Hook : Xbyak::CodeGenerator
 			{
@@ -175,5 +241,12 @@ namespace hooks
 			utils::WriteCallTrampoline<5>(rotation1HookedAddress, Hook(&MotionDataContainer::ProcessRotationData_Hook));
 			utils::WriteCallTrampoline<5>(rotation2HookedAddress, Hook(&MotionDataContainer::ProcessRotationData_Hook));
 		}
+		const auto configuredLevel = spdlog::default_logger()->level();
+		logger::set_level(logger::level::info, logger::level::info);
+		logger::info("Succesfully loaded!");
+		logger::flush();
+		logger::set_level(configuredLevel, configuredLevel);
+		rollback.Commit();
+		return true;
 	}
 }

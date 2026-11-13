@@ -15,6 +15,7 @@ pdb = args.build / 'AnimationMotionRevolution.pdb'
 assert dll_identity(dll) == pdb_identity(pdb), 'DLL/PDB identity mismatch'
 files = {'SKSE/Plugins/' + dll.name: dll.read_bytes(),
          'SKSE/Plugins/' + pdb.name: pdb.read_bytes(),
+         'SKSE/Plugins/AnimationMotionRevolution.ini': (root / 'config/AnimationMotionRevolution.ini').read_bytes(),
          'readmes/GPL-3.0-or-later.txt': (root / 'LICENSE').read_bytes(),
          'readmes/AMR-MIT-LICENSE.txt': (root / 'LICENSES/MIT-AnimationMotionRevolution.txt').read_bytes(),
          'readmes/NOTICE.txt': (root / 'NOTICE.md').read_bytes(),
@@ -23,7 +24,7 @@ for copyright in (args.build / 'vcpkg_installed/x64-windows-skse/share').glob('*
     files['readmes/licenses/' + copyright.parent.name + '.txt'] = copyright.read_bytes()
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
-output = dist / 'AnimationMotionRevolution-1.5.4-GitHubBuild-PDB.zip'
+output = dist / 'AnimationMotionRevolution-1.5.4.5-GitHubBuild-PDB.zip'
 with zipfile.ZipFile(output, 'x', zipfile.ZIP_DEFLATED) as z:
     for name, data in files.items(): z.writestr(name, data)
 with zipfile.ZipFile(output) as z:

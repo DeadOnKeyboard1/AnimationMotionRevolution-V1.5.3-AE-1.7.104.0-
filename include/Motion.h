@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <cmath>
 #include <limits>
 #include <numbers>
 
@@ -14,58 +15,67 @@ struct Motion
 using Translation = Motion<RE::NiPoint3>;
 using Rotation = Motion<RE::NiQuaternion>;
 
-// Annotations we are looking for contain translation/rotation data
-static std::variant<std::monostate, Translation, Rotation>
-	ParseAnnotation(const RE::hkaAnnotationTrack::Annotation& a_annotation)
+inline bool ParseMotionNumber(std::string_view& text, float& value) noexcept
+{
+	const auto begin = text.find_first_not_of(" \t\r\n");
+	if (begin == std::string_view::npos) return false;
+	text.remove_prefix(begin);
+	const auto end = text.find_first_of(" \t\r\n");
+	auto token = text.substr(0, end);
+	if (token.starts_with('+')) {
+		token.remove_prefix(1);
+		if (token.starts_with('-')) return false;
+	}
+	if (token.empty() || token.starts_with('+')) return false;
+	const auto result = std::from_chars(token.data(), token.data() + token.size(), value);
+	if (result.ec != std::errc{} || result.ptr != token.data() + token.size() || !std::isfinite(value)) return false;
+	text.remove_prefix(end == std::string_view::npos ? text.size() : end);
+	return true;
+}
+
+inline std::variant<std::monostate, Translation, Rotation>
+	ParseMotionText(float time, std::string_view text) noexcept
 {
 	constexpr std::string_view animmotionPrefix = "animmotion ";
 	constexpr std::string_view animrotationPrefix = "animrotation ";
 
-	std::string_view text{ a_annotation.text.c_str() };
+	if (!std::isfinite(time) || time < 0.0f) return {};
 
 	if (text.starts_with(animmotionPrefix))
 	{
-		std::string_view start = text.substr(animmotionPrefix.size());
-		std::string_view end = start.substr(start.find(' ') + 1);
-
-		RE::NiPoint3 translation;
-
-		std::from_chars(start.data(), end.data(), translation.x);
-
-		start = end;
-		end = start.substr(start.find(' ') + 1);
-
-		std::from_chars(start.data(), end.data(), translation.y);
-
-		start = end;
-		end = start.substr(start.size());
-
-		std::from_chars(start.data(), end.data(), translation.z);
-
-		return Translation{ a_annotation.time, translation };
+		auto remaining = text.substr(animmotionPrefix.size());
+		RE::NiPoint3 translation{};
+		if (!ParseMotionNumber(remaining, translation.x) || !ParseMotionNumber(remaining, translation.y) ||
+			!ParseMotionNumber(remaining, translation.z) || remaining.find_first_not_of(" \t\r\n") != std::string_view::npos) return {};
+		return Translation{ time, translation };
 	}
 	else if (text.starts_with(animrotationPrefix))
 	{
-		std::string_view start = text.substr(animrotationPrefix.size());
-		std::string_view end = start.substr(start.size());
-
-		float yawDegrees;
-		std::from_chars(start.data(), end.data(), yawDegrees);
+		auto remaining = text.substr(animrotationPrefix.size());
+		float yawDegrees{};
+		if (!ParseMotionNumber(remaining, yawDegrees) || remaining.find_first_not_of(" \t\r\n") != std::string_view::npos) return {};
 
 		float roll = 0.0f;
 		float pitch = 0.0f;
-		float yaw = yawDegrees * std::numbers::pi_v<float> / 180.0f;
+		float yaw = (yawDegrees / 180.0f) * std::numbers::pi_v<float>;
 
 		RE::NiQuaternion rotation
 		{
-			.w = std::cos(roll / 2) * std::cos(pitch / 2) * std::cos(yaw / 2) + std::sin(roll / 2) * std::sin(pitch / 2) * std::sin(yaw / 2),
-			.x = std::sin(roll / 2) * std::cos(pitch / 2) * std::cos(yaw / 2) - std::cos(roll / 2) * std::sin(pitch / 2) * std::sin(yaw / 2),
-			.y = std::cos(roll / 2) * std::sin(pitch / 2) * std::cos(yaw / 2) + std::sin(roll / 2) * std::cos(pitch / 2) * std::sin(yaw / 2),
-			.z = std::cos(roll / 2) * std::cos(pitch / 2) * std::sin(yaw / 2) - std::sin(roll / 2) * std::sin(pitch / 2) * std::cos(yaw / 2)
+			std::cos(roll / 2) * std::cos(pitch / 2) * std::cos(yaw / 2) + std::sin(roll / 2) * std::sin(pitch / 2) * std::sin(yaw / 2),
+			std::sin(roll / 2) * std::cos(pitch / 2) * std::cos(yaw / 2) - std::cos(roll / 2) * std::sin(pitch / 2) * std::sin(yaw / 2),
+			std::cos(roll / 2) * std::sin(pitch / 2) * std::cos(yaw / 2) + std::sin(roll / 2) * std::cos(pitch / 2) * std::sin(yaw / 2),
+			std::cos(roll / 2) * std::cos(pitch / 2) * std::sin(yaw / 2) - std::sin(roll / 2) * std::sin(pitch / 2) * std::cos(yaw / 2)
 		};
 
-		return Rotation{ a_annotation.time, rotation };
+		return Rotation{ time, rotation };
 	}
 
 	return { };
+}
+
+inline std::variant<std::monostate, Translation, Rotation>
+	ParseAnnotation(const RE::hkaAnnotationTrack::Annotation& annotation) noexcept
+{
+	const auto text = annotation.text.c_str();
+	return text ? ParseMotionText(annotation.time, text) : std::variant<std::monostate, Translation, Rotation>{};
 }

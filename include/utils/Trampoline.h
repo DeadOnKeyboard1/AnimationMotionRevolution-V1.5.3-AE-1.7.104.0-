@@ -53,7 +53,7 @@ namespace utils
 	{
 		auto& hookCode = const_cast<Xbyak::CodeGenerator&>(a_hookCode);
 		
-		AllocExactSizeTrampoline<N>(hookCode);
+		hookCode.ready();
 
 		return SKSE::GetTrampoline().write_branch<N>(a_location, SKSE::GetTrampoline().allocate(hookCode));
 	}
@@ -63,7 +63,7 @@ namespace utils
 	{
 		auto& hookCode = const_cast<Xbyak::CodeGenerator&>(a_hookCode);
 
-		AllocExactSizeTrampoline<N>(hookCode);
+		hookCode.ready();
 
 		return SKSE::GetTrampoline().write_call<N>(a_location, SKSE::GetTrampoline().allocate(hookCode));
 	}

@@ -18,6 +18,16 @@ other runtimes. VR is not built by the release preset.
 
 ## Build
 
+### Version 1.5.4.5
+
+AMR 1.5.4.5 builds against CommonLibSSE-NG 12.1.0 (pinned commit
+`8ffc2b74af015f837de53cc02b0cb470a15678e4`, SE/AE flat-rim), adds module-relative
+runtime validation and safe hook/trampoline rollback, and ships
+`config/AnimationMotionRevolution.ini` with `[Debug]` logging / optional bounded
+motion diagnostics (`bEnableMotionDiagnostics=0` by default).
+
+### Standalone Build
+
 Requirements: Windows x64, Visual Studio C++ desktop tools with C++23 support
 (tested locally with Visual Studio 2026), Windows SDK, CMake, Ninja, Git, and
 vcpkg. Python 3 is needed only for packaging and verification.

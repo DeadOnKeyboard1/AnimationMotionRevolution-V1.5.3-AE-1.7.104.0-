@@ -1,0 +1,15 @@
+#include <REL/Relocation.h>
+#include <SKSE/SKSE.h>
+
+using namespace std::literals;
+static_assert(sizeof(SKSE::PluginDeclaration) == 0x350);
+static_assert(offsetof(SKSE::PluginDeclaration::PluginDeclarationInfo, StructCompatibility) == 0x300);
+
+SKSEPluginInfo(
+    .Version = REL::Version{@PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, @PROJECT_VERSION_TWEAK@},
+    .Name = "AnimationMotionRevolution"sv,
+    .Author = "alexsylex"sv,
+    .StructCompatibility = SKSE::StructCompatibility::Dependent,
+    .RuntimeCompatibility = {SKSE::VersionIndependence::AddressLibrary, true},
+    .MinimumSKSEVersion = REL::Version{0, 0, 0, 0}
+)

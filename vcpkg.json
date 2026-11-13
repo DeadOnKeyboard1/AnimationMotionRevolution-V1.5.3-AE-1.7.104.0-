@@ -1,6 +1,6 @@
 {
     "name": "animationmotionrevolution",
-    "version-string": "1.5.4",
+    "version-string": "1.5.4.5",
     "description": "",
     "homepage": "https://github.com/alexsylex/AnimationMotionRevolution",
     "license": "GPL-3.0-or-later",
@@ -13,6 +13,7 @@
         "tsl-ordered-map",
         "fmt",
         "spdlog",
-        "rapidcsv"
+        "rapidcsv",
+        "directxtk"
     ]
 }

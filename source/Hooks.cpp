@@ -1,77 +1,34 @@
 #include "Hooks.h"
 
 #include "AnimMotionHandler.h"
+#include "CharacterClipAnimMotionMap.h"
 
 #include "utils/Logger.h"
+#include "MotionDiagnostics.h"
 
 namespace hooks
 {
-	// Container for each character instance that is playing an animation with custom motion data
-	class CharacterClipAnimMotionMap
-	{
-	public:
-		static CharacterClipAnimMotionMap* GetSingleton()
-		{
-			static CharacterClipAnimMotionMap singleton;
-
-			return &singleton;
-		}
-
-		template <typename StringT>
-		void Add(const RE::hkbCharacter* a_hkbCharacter, const StringT& a_clipName, const AnimMotionData& a_animMotionData)
-		{
-			std::string clipName{ a_clipName.c_str() };
-
-			try {
-				data[a_hkbCharacter][clipName] = a_animMotionData;
-			} catch (const std::exception& e) {
-				logger::warn("Exception thrown: {}, clearing to avoid possible memory overflow", e.what());
-				logger::flush();
-
-				data.clear();
-			}
-		}
-
-		template <typename StringT>
-		AnimMotionData* Get(const RE::hkbCharacter* a_hkbCharacter, const StringT& a_clipName)
-		{
-			std::string clipName{ a_clipName.c_str() };
-
-			if (data.contains(a_hkbCharacter) && data[a_hkbCharacter].contains(clipName)) {
-				return &data[a_hkbCharacter][clipName];
-			} else {
-				return nullptr;
-			}
-		}
-
-		template <typename StringT>
-		void Remove(const RE::hkbCharacter* a_hkbCharacter, const StringT& a_clipName)
-		{
-			std::string clipName{ a_clipName.c_str() };
-
-			if (data.contains(a_hkbCharacter) && data[a_hkbCharacter].contains(clipName)) {
-				if (data[a_hkbCharacter].size() == 1) {
-					data.erase(a_hkbCharacter);
-				} else {
-					data[a_hkbCharacter].erase(clipName);
-				}
-			}
-		}
-
-		mutable RE::BSSpinLock lock;
-
-	private:
-		std::map<const RE::hkbCharacter*, std::map<std::string, AnimMotionData>> data;
-	};
-
 	// Called when animations are activated by clip generators
 	std::uint32_t hkbClipGenerator::ComputeStartTime_Hook(const RE::hkbClipGenerator* a_this, const RE::hkbContext* a_hkbContext)
 	{
+		if (!a_this) return ComputeStartTime(a_this);
+#ifdef AMR_MOTION_DIAGNOSTICS
+		amr::diagnostics::Trace trace{amr::diagnostics::Trace::Kind::activation};
+		trace.SetClip(a_this->name.c_str());
+		if (trace.capturing) trace.animation = amr::diagnostics::Label(a_this->animationName.c_str() ? a_this->animationName.c_str() : "");
+		trace.graph = a_hkbContext ? a_hkbContext->character : nullptr;
+#endif
 		auto characterClipAnimMotionMap = CharacterClipAnimMotionMap::GetSingleton();
 
 		RE::BSSpinLockGuard lockguard(characterClipAnimMotionMap->lock);
 
 		const RE::hkaAnimation* boundAnimation = GetBoundAnimation(a_this);
+#ifdef AMR_MOTION_DIAGNOSTICS
+		if (trace.capturing) {
+			trace.bound = boundAnimation != nullptr;
+			trace.tracks = boundAnimation ? boundAnimation->annotationTracks.size() : 0;
+		}
+#endif
 
 		if (boundAnimation)
 		{
@@ -85,17 +42,28 @@ namespace hooks
 				// they are activated
 				if (animMotionData && animMotionData->animation == boundAnimation)
 				{
-					animMotionData->activeCount++;
+					if (!animMotionData->Activate()) {
+						characterClipAnimMotionMap->Remove(hkbCharacter, a_this->name);
+					}
 				}
 				else
 				{
+					if (animMotionData) {
+						characterClipAnimMotionMap->Remove(hkbCharacter, a_this->name);
+						animMotionData = nullptr;
+					}
 					Translation* translation = nullptr;
 					Rotation* rotation = nullptr;
+					bool cacheUnavailable = false;
 
+					try {
 					for (const RE::hkaAnnotationTrack& annotationTrack : boundAnimation->annotationTracks)
 					{
 						for (const RE::hkaAnnotationTrack::Annotation& annotation : annotationTrack.annotations)
 						{
+#ifdef AMR_MOTION_DIAGNOSTICS
+							if (trace.capturing) ++trace.annotations;
+#endif
 							auto dataParsed = ParseAnnotation(annotation);
 
 							translation = std::get_if<Translation>(&dataParsed);
@@ -108,12 +76,8 @@ namespace hooks
 								}
 								else
 								{
-									characterClipAnimMotionMap->Add(hkbCharacter, a_this->name, AnimMotionData{ boundAnimation, translation });
-
-									if (!animMotionData)
-									{
-										animMotionData = characterClipAnimMotionMap->Get(hkbCharacter, a_this->name);
-									}
+									animMotionData = characterClipAnimMotionMap->Add(hkbCharacter, a_this->name, boundAnimation, translation);
+									if (!animMotionData) { cacheUnavailable = true; break; }
 								}
 							}
 							else
@@ -128,17 +92,14 @@ namespace hooks
 									}
 									else
 									{
-										characterClipAnimMotionMap->Add(hkbCharacter, a_this->name, AnimMotionData{ boundAnimation, rotation });
-
-										if (!animMotionData)
-										{
-											animMotionData = characterClipAnimMotionMap->Get(hkbCharacter, a_this->name);
-										}
+										animMotionData = characterClipAnimMotionMap->Add(hkbCharacter, a_this->name, boundAnimation, rotation);
+										if (!animMotionData) { cacheUnavailable = true; break; }
 									}
 								}
 							}
 						}
 
+						if (cacheUnavailable) break;
 						if (animMotionData)
 						{
 							animMotionData->SortListsByTime();
@@ -146,14 +107,14 @@ namespace hooks
 							if (!animMotionData->translationList.empty() && animMotionData->translationList.back().time != boundAnimation->duration)
 							{
 								logger::warn("Animation={} of hkbCharacter=0x{:08x} ends at {}, while custom translation ends at {}",
-									a_this->animationName.c_str(), reinterpret_cast<std::uint64_t>(hkbCharacter),
+									a_this->animationName.c_str() ? a_this->animationName.c_str() : "<unnamed>", reinterpret_cast<std::uint64_t>(hkbCharacter),
 									boundAnimation->duration, animMotionData->translationList.back().time);
 							}
 
 							if (!animMotionData->rotationList.empty() && animMotionData->rotationList.back().time != boundAnimation->duration)
 							{
 								logger::warn("Animation={} of hkbCharacter=0x{:08x} ends at {}, while custom rotation ends at {}",
-									a_this->animationName.c_str(), reinterpret_cast<std::uint64_t>(hkbCharacter),
+									a_this->animationName.c_str() ? a_this->animationName.c_str() : "<unnamed>", reinterpret_cast<std::uint64_t>(hkbCharacter),
 									boundAnimation->duration, animMotionData->rotationList.back().time);
 							}
 
@@ -161,16 +122,39 @@ namespace hooks
 							break;
 						}
 					}
+					} catch (const std::bad_alloc&) {
+						characterClipAnimMotionMap->Remove(hkbCharacter, a_this->name);
+						logger::warn("Custom motion allocation failed; retaining native motion");
+					} catch (const std::length_error&) {
+						characterClipAnimMotionMap->Remove(hkbCharacter, a_this->name);
+						logger::warn("Custom motion list exceeded its size limit; retaining native motion");
+					}
 				}
 			}
 		}
 
+#ifdef AMR_MOTION_DIAGNOSTICS
+		if (trace.enabled) {
+			if (const auto data = characterClipAnimMotionMap->Get(trace.graph, a_this->name)) {
+				trace.cacheHit = true;
+				trace.translations = data->translationList.size();
+				trace.rotations = data->rotationList.size();
+				trace.active = data->activeCount;
+			}
+		}
+#endif
 		return ComputeStartTime(a_this);
 	}
 
 	// Called when animations are deactivated by clip generators
 	void hkbClipGenerator::ResetIgnoreStartTime_Hook(const RE::hkbClipGenerator* a_this, const RE::hkbContext* a_hkbContext)
 	{
+		if (!a_this) { ResetIgnoreStartTime(a_this); return; }
+#ifdef AMR_MOTION_DIAGNOSTICS
+		amr::diagnostics::Trace trace{amr::diagnostics::Trace::Kind::deactivation};
+		trace.SetClip(a_this->name.c_str());
+		trace.graph = a_hkbContext ? a_hkbContext->character : nullptr;
+#endif
 		auto characterClipAnimMotionMap = CharacterClipAnimMotionMap::GetSingleton();
 		RE::BSSpinLockGuard lockguard(characterClipAnimMotionMap->lock);
 
@@ -188,10 +172,16 @@ namespace hooks
 				// activated times left
 				if (animMotionData && animMotionData->animation == boundAnimation)
 				{
-					animMotionData->activeCount--;
-
-					// Erase from the list when deactivated same times as activated
-					if (!animMotionData->activeCount)
+#ifdef AMR_MOTION_DIAGNOSTICS
+					if (trace.capturing) {
+						trace.bound = true;
+						trace.cacheHit = true;
+						trace.translations = animMotionData->translationList.size();
+						trace.rotations = animMotionData->rotationList.size();
+						trace.active = animMotionData->activeCount;
+					}
+#endif
+					if (animMotionData->Deactivate())
 					{
 						characterClipAnimMotionMap->Remove(hkbCharacter, a_this->name);
 					}
@@ -206,16 +196,30 @@ namespace hooks
 														  RE::NiPoint3& a_translation, const RE::BSFixedString* a_clipName,
 														  RE::Character* a_character)
 	{
+#ifdef AMR_MOTION_DIAGNOSTICS
+		amr::diagnostics::Trace trace{amr::diagnostics::Trace::Kind::translation};
+		trace.SetClip(a_clipName ? a_clipName->c_str() : nullptr);
+		trace.time = a_motionTime;
+#endif
 		auto characterClipAnimMotionMap = CharacterClipAnimMotionMap::GetSingleton();
 		RE::BSSpinLockGuard lockguard(characterClipAnimMotionMap->lock);
 
 		RE::hkbCharacter* hkbCharacter = GethkbCharacter(a_character);
 
-		AnimMotionData* animMotionData = characterClipAnimMotionMap->Get(hkbCharacter, *a_clipName);
+		AnimMotionData* animMotionData = a_clipName ? characterClipAnimMotionMap->Get(hkbCharacter, *a_clipName) : nullptr;
 
 		std::vector<Translation>* customTranslationList = animMotionData ? &animMotionData->translationList : nullptr;
 
 		bool hasCustomMotionList = customTranslationList && !customTranslationList->empty();
+#ifdef AMR_MOTION_DIAGNOSTICS
+		trace.SetPlayer(a_character, hkbCharacter);
+		if (trace.capturing) {
+			trace.cacheHit = animMotionData != nullptr;
+			trace.custom = hasCustomMotionList;
+			trace.translations = animMotionData ? animMotionData->translationList.size() : 0;
+			trace.rotations = animMotionData ? animMotionData->rotationList.size() : 0;
+		}
+#endif
 
 		if (hasCustomMotionList)
 		{
@@ -223,15 +227,15 @@ namespace hooks
 
 			float curMotionTime = (a_motionTime > endMotionTime) ? endMotionTime : a_motionTime;
 
-			auto segCount = static_cast<std::uint32_t>(customTranslationList->size());
+			const auto segCount = customTranslationList->size();
 
-			for (std::uint32_t segIndex = 1; segIndex <= segCount; segIndex++)
+			for (std::size_t segIndex = 1; segIndex <= segCount; segIndex++)
 			{
 				float curSegMotionTime = customTranslationList->at(segIndex - 1).time;
 
 				if (curMotionTime <= curSegMotionTime)
 				{
-					std::uint32_t prevSegIndex = segIndex - 1;
+					const auto prevSegIndex = segIndex - 1;
 					float segProgress = 1.0f;
 
 					float prevSegMotionTime = prevSegIndex ? customTranslationList->at(prevSegIndex - 1).time : 0.0f;
@@ -249,6 +253,9 @@ namespace hooks
 																   RE::NiPoint3{ 0.0f, 0.0f, 0.0f };
 
 					a_translation = (curSegTranslation * segProgress + prevSegTranslation * (1.0f - segProgress));
+#ifdef AMR_MOTION_DIAGNOSTICS
+					trace.output = {a_translation.x, a_translation.y, a_translation.z, 0};
+#endif
 
 					return;
 				}
@@ -262,6 +269,9 @@ namespace hooks
 			if (hasVanillaMotionList)
 			{
 				ProcessTranslationData(&a_this->translationDataPtr, a_motionTime, a_translation);
+#ifdef AMR_MOTION_DIAGNOSTICS
+				trace.output = {a_translation.x, a_translation.y, a_translation.z, 0};
+#endif
 
 				return;
 			}
@@ -274,18 +284,30 @@ namespace hooks
 													   RE::NiQuaternion& a_rotation, const RE::BSFixedString* a_clipName,
 													   RE::Character* a_character)
 	{
+#ifdef AMR_MOTION_DIAGNOSTICS
+		amr::diagnostics::Trace trace{amr::diagnostics::Trace::Kind::rotation};
+		trace.SetClip(a_clipName ? a_clipName->c_str() : nullptr);
+		trace.time = a_motionTime;
+#endif
 		auto characterClipAnimMotionMap = CharacterClipAnimMotionMap::GetSingleton();
 		RE::BSSpinLockGuard lockguard(characterClipAnimMotionMap->lock);
 
 		RE::hkbCharacter* hkbCharacter = GethkbCharacter(a_character);
 
-		auto characterController = a_character->GetCharController();
-
-		AnimMotionData* animMotionData = characterClipAnimMotionMap->Get(hkbCharacter, *a_clipName);
+		AnimMotionData* animMotionData = a_clipName ? characterClipAnimMotionMap->Get(hkbCharacter, *a_clipName) : nullptr;
 
 		std::vector<Rotation>* customRotationList = animMotionData ? &animMotionData->rotationList : nullptr;
 
 		bool hasCustomMotionList = customRotationList && !customRotationList->empty();
+#ifdef AMR_MOTION_DIAGNOSTICS
+		trace.SetPlayer(a_character, hkbCharacter);
+		if (trace.capturing) {
+			trace.cacheHit = animMotionData != nullptr;
+			trace.custom = hasCustomMotionList;
+			trace.translations = animMotionData ? animMotionData->translationList.size() : 0;
+			trace.rotations = animMotionData ? animMotionData->rotationList.size() : 0;
+		}
+#endif
 
 		if (hasCustomMotionList)
 		{
@@ -293,13 +315,13 @@ namespace hooks
 
 			float curMotionTime = (a_motionTime > endMotionTime) ? endMotionTime : a_motionTime;
 
-			for (std::uint32_t segIndex = 1; segIndex <= customRotationList->size(); segIndex++)
+			for (std::size_t segIndex = 1; segIndex <= customRotationList->size(); segIndex++)
 			{
 				float curSegMotionTime = customRotationList->at(segIndex - 1).time;
 
 				if (curMotionTime <= curSegMotionTime)
 				{
-					std::uint32_t prevSegIndex = segIndex - 1;
+					const auto prevSegIndex = segIndex - 1;
 					float segProgress = 1.0f;
 
 					float prevSegMotionTime = prevSegIndex ? customRotationList->at(prevSegIndex - 1).time : 0.0f;
@@ -315,6 +337,9 @@ namespace hooks
 																	RE::NiQuaternion{ 1.0f, 0.0f, 0.0f, 0.0f };
 
 					InterpolateRotation(a_rotation, segProgress, prevSegRotation, curSegRotation);
+#ifdef AMR_MOTION_DIAGNOSTICS
+					trace.output = {a_rotation.w, a_rotation.x, a_rotation.y, a_rotation.z};
+#endif
 
 					return;
 				}
@@ -328,11 +353,17 @@ namespace hooks
 			if (hasVanillaMotionList)
 			{
 				ProcessRotationData(&a_this->rotationDataPtr, a_motionTime, a_rotation);
+#ifdef AMR_MOTION_DIAGNOSTICS
+				trace.output = {a_rotation.w, a_rotation.x, a_rotation.y, a_rotation.z};
+#endif
 
 				return;
 			}
 		}
 
 		a_rotation = RE::NiQuaternion{ 1.0f, 0.0f, 0.0f, 0.0f };
+#ifdef AMR_MOTION_DIAGNOSTICS
+		trace.output = {a_rotation.w, a_rotation.x, a_rotation.y, a_rotation.z};
+#endif
 	}
 }

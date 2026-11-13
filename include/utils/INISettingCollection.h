@@ -52,12 +52,12 @@ namespace utils
 		template <>
 		std::int32_t GetSetting<std::int32_t>(const char* a_name) const
 		{
-			return GetSetting(a_name)->GetSInt();
+			return GetSetting(a_name)->GetInteger();
 		}
 		template <>
 		RE::Color GetSetting<RE::Color>(const char* a_name) const
 		{
-			return GetSetting(a_name)->GetColor();
+			return RE::Color{GetSetting(a_name)->GetColor()};
 		}
 		template <>
 		const char* GetSetting<const char*>(const char* a_name) const
@@ -67,7 +67,7 @@ namespace utils
 		template <>
 		std::uint32_t GetSetting<std::uint32_t>(const char* a_name) const
 		{
-			return GetSetting(a_name)->GetUInt();
+			return GetSetting(a_name)->GetUnsignedInteger();
 		}
 
 		bool ReadFromFile(std::string_view a_fileName);
@@ -92,9 +92,9 @@ namespace utils
 		const RE::INISettingCollection* _this() const { return reinterpret_cast<const RE::INISettingCollection*>(this); }
 
 		// members
-		char subKey[MAX_PATH];					  // 008
-		std::uint32_t pad10C;					  // 10C
-		void* handle;							  // 110
+		char subKey[MAX_PATH]{};					  // 008
+		std::uint32_t pad10C{};					  // 10C
+		void* handle{};							  // 110
 		RE::BSSimpleList<RE::Setting*> settings;  // 118
 	};
 	static_assert(sizeof(INISettingCollection) == sizeof(RE::INISettingCollection));

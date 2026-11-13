@@ -13,7 +13,8 @@ namespace settings
 		{
 			using namespace debug;
 			iniSettingCollection->AddSettings(
-				MakeSetting("uLogLevel:Debug", static_cast<std::uint32_t>(logLevel)));
+				MakeSetting("uLogLevel:Debug", static_cast<std::uint32_t>(logLevel)),
+				MakeSetting("bEnableMotionDiagnostics:Debug", enableMotionDiagnostics));
 		}
 
 		if (!iniSettingCollection->ReadFromFile(a_iniFileName))
@@ -23,7 +24,15 @@ namespace settings
 
 		{
 			using namespace debug;
-			logLevel = static_cast<logger::level>(iniSettingCollection->GetSetting<std::uint32_t>("uLogLevel:Debug"));
+			if (const auto diagnostic = iniSettingCollection->GetSetting("bEnableMotionDiagnostics:Debug")) {
+				enableMotionDiagnostics = diagnostic->GetBool();
+			}
+			const auto setting = iniSettingCollection->GetSetting("uLogLevel:Debug");
+			if (setting) {
+				const auto value = setting->GetUnsignedInteger();
+				if (value <= static_cast<std::uint32_t>(logger::level::off)) logLevel = static_cast<logger::level>(value);
+				else logger::warn("Invalid log level {}; retaining the default", value);
+			}
 		}
 	}
 }

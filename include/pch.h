@@ -1,8 +1,9 @@
 #pragma once
 
-#include "RE/Skyrim.h"
-#include "REL/Relocation.h"
-#include "SKSE/SKSE.h"
+#include <RE/Skyrim.h>
+#include <REL/Relocation.h>
+#include <SKSE/SKSE.h>
+#include "RuntimeLayout.h"
 
 #include <spdlog/sinks/basic_file_sink.h>
 

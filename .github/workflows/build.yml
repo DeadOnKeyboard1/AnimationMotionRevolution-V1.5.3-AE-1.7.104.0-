@@ -32,6 +32,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
       - uses: actions/upload-artifact@v4
         with:
-          name: AMR-1.5.4-GitHubBuild
+          name: AMR-1.5.4.5-GitHubBuild
           path: dist/*
           if-no-files-found: error

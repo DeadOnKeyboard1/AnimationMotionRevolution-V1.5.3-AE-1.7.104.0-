@@ -15,5 +15,6 @@ namespace settings
 	namespace debug
 	{
 		inline logger::level logLevel = logger::level::err;
+		inline bool enableMotionDiagnostics = false;
 	}
 }

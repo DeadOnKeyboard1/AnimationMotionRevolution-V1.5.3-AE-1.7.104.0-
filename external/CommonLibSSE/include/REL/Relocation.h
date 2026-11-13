@@ -857,8 +857,12 @@ namespace REL {
             void *moduleHandle = nullptr;
             _filename.resize(getFilename());
             if (const auto result = getFilename();
-                    result != _filename.size() - 1 ||
-                    result == 0) {
+                    result != 0 && result < _filename.size()) {
+                _filename.resize(result);
+                moduleHandle = GetModuleHandle(_filename.c_str());
+            }
+            // A stale loader override must not hide a known, already loaded runtime.
+            if (!moduleHandle) {
                 for (auto runtime: RUNTIMES) {
                     _filename = runtime;
                     moduleHandle = GetModuleHandle(_filename.c_str());
@@ -867,15 +871,21 @@ namespace REL {
                     }
                 }
             }
-            _filePath = _filename;
             if (!moduleHandle) {
                 stl::report_and_fail(
                         fmt::format(
-                                "Failed to obtain module handle for: \"{0}\".\n"
-                                "You have likely renamed the executable to something unexpected. "
-                                "Renaming the executable back to \"{0}\" may resolve the issue."sv,
-                                stl::utf16_to_utf8(_filename).value_or("<unicode conversion error>"s)));
+                                "Failed to obtain the Skyrim module handle.\n"
+                                "No loaded SkyrimVR.exe, SkyrimSE.exe or SkyrimSE.rne was found, "
+                                "and SKSE_RUNTIME did not resolve to a loaded module."sv));
             }
+            std::wstring resolvedPath(32768, L'\0');
+            const auto pathLength = GetModuleFileName(moduleHandle, resolvedPath.data(),
+                    static_cast<std::uint32_t>(resolvedPath.size()));
+            if (!pathLength || pathLength >= resolvedPath.size()) {
+                stl::report_and_fail("Failed to resolve the Skyrim executable path"sv);
+            }
+            resolvedPath.resize(pathLength);
+            _filePath = std::move(resolvedPath);
             return load(moduleHandle, true);
         }
 
@@ -943,8 +953,9 @@ namespace REL {
         };
 
         static constexpr auto ENVIRONMENT = L"SKSE_RUNTIME"sv;
-        static constexpr std::array<std::wstring_view, 2> RUNTIMES{{L"SkyrimVR.exe",
-                                                                    L"SkyrimSE.exe"}};
+        static constexpr std::array<std::wstring_view, 3> RUNTIMES{{L"SkyrimVR.exe",
+                                                                    L"SkyrimSE.exe",
+                                                                    L"SkyrimSE.rne"}};
 
         static Module _instance;
         static inline std::atomic_bool _initialized{false};

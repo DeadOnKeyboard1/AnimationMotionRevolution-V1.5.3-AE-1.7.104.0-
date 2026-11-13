@@ -47,6 +47,20 @@ public:
 		}
 	}
 
+	bool Activate() noexcept
+	{
+		if (activeCount < 1 || activeCount == std::numeric_limits<std::int32_t>::max()) return false;
+		++activeCount;
+		return true;
+	}
+
+	bool Deactivate() noexcept
+	{
+		if (activeCount <= 1) return true;
+		--activeCount;
+		return false;
+	}
+
 	const RE::hkaAnimation* animation = nullptr;
 	std::vector<Translation> translationList;
 	std::vector<Rotation> rotationList;

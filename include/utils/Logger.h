@@ -4,6 +4,7 @@
 
 namespace SKSE::log
 {
+	std::optional<std::filesystem::path> amr_log_directory();
 	using level = spdlog::level::level_enum;
 
 	inline void set_level(level a_log_level, level a_flush_level)
@@ -15,12 +16,13 @@ namespace SKSE::log
 	inline bool init(const std::string_view& a_log_name)
 	{
 		try {
-			if (!log_directory())
+			const auto directory = amr_log_directory();
+			if (!directory)
 			{
 				return false;
 			}
 
-			std::filesystem::path path = *log_directory() / a_log_name;
+			std::filesystem::path path = *directory / a_log_name;
 			path += ".log";
 
 			spdlog::drop(std::string(a_log_name));
