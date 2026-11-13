@@ -1,20 +1,22 @@
-# Animation Motion Revolution - Skyrim 1.7.104 Compatibility Source
+# Animation Motion Revolution - Universal SE/AE Compatibility Source (v1.5.4.5)
 
-Downstream source for the AMR 1.5.4 pathfix update. Original mod by
+Downstream source for the **AMR 1.5.4.5** Skyrim SE/AE compatibility update
+(including **Skyrim AE 1.7.104.0** / SKSE 2.3.1). Original mod by
 [alexsylex](https://github.com/alexsylex/AnimationMotionRevolution),
 [Nexus page](https://www.nexusmods.com/skyrimspecialedition/mods/50258).
 The original AMR source is MIT-licensed and its author attribution is retained.
-The Skyrim 1.7.104 compatibility work uses GPL-3.0-or-later CommonLibSSE-NG
+The downstream compatibility work uses GPL-3.0-or-later CommonLibSSE-NG
 material, so this downstream combined source and its binaries are distributed
 under GPL-3.0-or-later.
 
 ## Scope
 
-This branch retains the supplied Skyrim Steam 1.7.104 compatibility changes,
-Address Library format-5 support and module-relative Address Library lookup.
-Use the matching SKSE 2.3.1 and Address Library for that runtime.
-SE/AE code paths remain in the source; this branch does not claim tests on
-other runtimes. VR is not built by the release preset.
+This branch targets the Universal Skyrim SE/AE flat-rim baseline (`1.5.97.0`,
+`1.6.1170.0`, and mandatory primary target `1.7.104.0`) with Address Library
+format-5 support, module-relative Address Library lookup, runtime layout
+verification (`include/RuntimeLayout.h`), and HDE64 hook/rollback safety checks.
+Use the matching SKSE build and Address Library for your Skyrim runtime
+(e.g. SKSE 2.3.1 for Skyrim 1.7.104.0). VR is not built by the release preset.
 
 ## Build
 
@@ -56,7 +58,11 @@ cmake --preset release
 cmake --build --preset release
 ```
 
-CommonLib is compiled from this repository, not taken from an installed binary.
+CommonLibSSE-NG (`v12.1.0`, `8ffc2b74af015f837de53cc02b0cb470a15678e4`) and
+MinHook HDE64 (`v1.3.4`) are fetched automatically at configure time in
+standalone builds (or read from local caches via `SKSE_COMMONLIB_SOURCE_ROOT`
+and `AMR_HDE_ROOT`), and compiled alongside AMR rather than linked against a
+prebuilt binary.
 vcpkg restores the remaining pinned dependencies into `out/release`.
 No game installation, game executable, Address Library or sibling source folder
 is required to compile. Building does not deploy into Skyrim.

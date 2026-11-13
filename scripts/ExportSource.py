@@ -6,9 +6,9 @@ from pathlib import Path
 import zipfile
 
 root = Path(__file__).resolve().parents[1]
-directories = ('.github', 'cmake', 'include', 'source', 'external', 'scripts')
+directories = ('.github', 'cmake', 'config', 'include', 'LICENSES', 'source', 'external', 'scripts', 'tests')
 root_files = ('.clang-format', '.gitignore', 'CMakeLists.txt', 'CMakePresets.json',
-              'vcpkg.json', 'vcpkg-configuration.json', 'LICENSE', 'README.md',
+              'vcpkg.json', 'vcpkg-configuration.json', 'LICENSE', 'NOTICE.md', 'README.md',
               'DEPENDENCIES.md', 'RELEASE-NOTES.md', 'BUILD-VERIFICATION.md', 'version.rc.in')
 files = [root / name for name in root_files]
 for name in directories:
@@ -23,7 +23,7 @@ assert len(names) == len(files)
 manifest = {name: hashlib.sha256(p.read_bytes()).hexdigest() for name,p in sorted(names.items())}
 dist = root / 'dist'
 dist.mkdir(exist_ok=True)
-output = dist / 'AnimationMotionRevolution-1.5.4-GitHub-Source.zip'
+output = dist / 'AnimationMotionRevolution-1.5.4.5-GitHub-Source.zip'
 with zipfile.ZipFile(output, 'x', zipfile.ZIP_DEFLATED) as z:
     for name,p in sorted(names.items()):
         z.writestr(name, p.read_bytes())
