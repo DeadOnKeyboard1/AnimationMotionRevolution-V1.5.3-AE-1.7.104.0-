@@ -15,6 +15,12 @@ foreach ($line in $lines) {
     $index = $line.IndexOf('=')
     if ($index -gt 0) { [Environment]::SetEnvironmentVariable($line.Substring(0,$index),$line.Substring($index+1),'Process') }
 }
+if (!(Get-Command ninja.exe -ErrorAction SilentlyContinue)) {
+    $ninjaDir = Join-Path $vs 'Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja'
+    if (Test-Path (Join-Path $ninjaDir 'ninja.exe')) {
+        $env:PATH = "$ninjaDir;$env:PATH"
+    }
+}
 Push-Location (Join-Path $PSScriptRoot '..')
 try {
     & cmake --preset release

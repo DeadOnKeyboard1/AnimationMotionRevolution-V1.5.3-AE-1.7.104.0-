@@ -142,14 +142,19 @@ if(AMR_COMMONLIB_ROOT AND EXISTS "${AMR_COMMONLIB_ROOT}/CMakeLists.txt")
 		message(FATAL_ERROR "AMR requires the qualified CommonLibSSE-NG v12.1.0 revision")
 	endif()
 else()
-	include(FetchContent)
-	FetchContent_Declare(
-		CommonLibSSE_NG
-		GIT_REPOSITORY https://github.com/alandtse/CommonLibSSE-NG.git
-		GIT_TAG 8ffc2b74af015f837de53cc02b0cb470a15678e4
-	)
-	FetchContent_Populate(CommonLibSSE_NG)
-	set(AMR_COMMONLIB_ROOT "${commonlibsse_ng_SOURCE_DIR}")
+	set(AMR_COMMONLIB_ROOT "${CMAKE_CURRENT_BINARY_DIR}/_deps/commonlibsse-ng-src")
+	if(NOT EXISTS "${AMR_COMMONLIB_ROOT}/CMakeLists.txt")
+		find_package(Git REQUIRED)
+		file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/_deps")
+		execute_process(
+			COMMAND "${GIT_EXECUTABLE}" clone --filter=blob:none --no-checkout https://github.com/alandtse/CommonLibSSE-NG.git "${AMR_COMMONLIB_ROOT}"
+			COMMAND_ERROR_IS_FATAL ANY
+		)
+		execute_process(
+			COMMAND "${GIT_EXECUTABLE}" -C "${AMR_COMMONLIB_ROOT}" checkout 8ffc2b74af015f837de53cc02b0cb470a15678e4
+			COMMAND_ERROR_IS_FATAL ANY
+		)
+	endif()
 endif()
 find_package(xbyak CONFIG REQUIRED)
 # Keep the established loaded-module override/name behavior, adding NG's main-module fallback.

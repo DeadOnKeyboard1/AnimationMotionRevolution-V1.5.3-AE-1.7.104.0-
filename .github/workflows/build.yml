@@ -11,6 +11,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Create short build junction
+        shell: pwsh
+        run: |
+          $short = Join-Path $env:RUNNER_TEMP 'w'
+          if (Test-Path $short) { cmd /c rmdir "`"$short`"" }
+          cmd /c mklink /J "`"$short`"" "`"$env:GITHUB_WORKSPACE`""
+          if ($LASTEXITCODE -ne 0) { throw 'Junction failed' }
+          "AMR_WORK=$short" >> $env:GITHUB_ENV
       - name: Bootstrap pinned vcpkg
         shell: pwsh
         run: |
@@ -24,9 +32,11 @@ jobs:
           "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
       - name: Build from source
         shell: pwsh
+        working-directory: ${{ env.AMR_WORK }}
         run: ./scripts/Build.ps1
       - name: Verify and package
         shell: pwsh
+        working-directory: ${{ env.AMR_WORK }}
         run: |
           python ./scripts/Package.py
           if ($LASTEXITCODE -ne 0) { throw 'Package verification failed' }
